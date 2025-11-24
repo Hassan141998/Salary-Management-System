@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Monthly Reports - RASS CUISINE{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-xl shadow-md p-6 max-w-2xl mx-auto">
+        <div class="text-center mb-6">
+            <div class="bg-gradient-to-r from-orange-500 to-red-500 w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800">Monthly Salary Reports</h2>
+            <p class="text-gray-600 text-sm mt-2">Download comprehensive salary reports by month</p>
+        </div>
+
+        <div class="space-y-6">
+            <!-- Current Month -->
+            <div class="bg-orange-50 border-2 border-orange-200 rounded-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Current Month Report</h3>
+                <p class="text-gray-600 mb-4">
+                    Download report for <span class="font-bold">{{ now.strftime('%B %Y') }}</span>
+                </p>
+                <a href="{{ url_for('download_monthly_report', month=now.month, year=now.year) }}"
+                   class="btn-primary inline-flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Download Current Month PDF
+                </a>
+            </div>
+
+            <!-- Previous Months -->
+            <div class="border-2 border-gray-200 rounded-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Previous Months</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {% for i in range(1, 7) %}
+                    {% set past_date = (now - timedelta(days=30*i)) %}
+                    <a href="{{ url_for('download_monthly_report', month=past_date.month, year=past_date.year) }}"
+                       class="flex items-center justify-between p-4 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-orange-500 transition-all group">
+                        <div class="flex items-center">
+                            <div class="bg-gray-100 group-hover:bg-orange-100 p-2 rounded-lg mr-3">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600 group-hover:text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                            </div>
+                            <span class="font-medium text-gray-800">{{ past_date.strftime('%B %Y') }}</span>
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 group-hover:text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3" />
+                        </svg>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Custom Date Range -->
+            <div class="border-2 border-gray-200 rounded-lg p-6">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Custom Month</h3>
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Month</label>
+                            <select id="custom_month" class="input-field">
+                                <option value="1">January</option>
+                                <option value="2">February</option>
+                                <option value="3">March</option>
+                                <option value="4">April</option>
+                                <option value="5">May</option>
+                                <option value="6">June</option>
+                                <option value="7">July</option>
+                                <option value="8">August</option>
+                                <option value="9">September</option>
+                                <option value="10">October</option>
+                                <option value="11">November</option>
+                                <option value="12">December</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Year</label>
+                            <select id="custom_year" class="input-field">
+                                {% for year in range(now.year, now.year - 5, -1) %}
+                                <option value="{{ year }}">{{ year }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <button onclick="downloadCustomReport()" class="btn-primary w-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Download Custom Month Report
+                    </button>
+                </div>
+            </div>
+
+            <!-- Back Button -->
+            <div class="text-center">
+                <a href="{{ url_for('dashboard') }}" class="btn-secondary inline-flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function downloadCustomReport() {
+    const month = document.getElementById('custom_month').value;
+    const year = document.getElementById('custom_year').value;
+    window.location.href = `/reports/monthly/download?month=${month}&year=${year}`;
+}
+
+// Set current month and year as default
+document.addEventListener('DOMContentLoaded', function() {
+    const now = new Date();
+    document.getElementById('custom_month').value = now.getMonth() + 1;
+    document.getElementById('custom_year').value = now.getFullYear();
+});
+</script>
+{% endblock %}

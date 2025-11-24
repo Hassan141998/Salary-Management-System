@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Employees - RASS CUISINE{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-xl shadow-md p-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800">Employee Management</h2>
+                <p class="text-gray-600 text-sm mt-1">Manage employee salaries and withdrawals</p>
+            </div>
+            <div class="flex space-x-4">
+                <a href="{{ url_for('export_csv') }}" class="btn-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export CSV
+                </a>
+                <button onclick="openAddModal()" class="btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Employee
+                </button>
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="mb-6">
+            <form method="GET" action="{{ url_for('employees') }}" class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ search }}"
+                    placeholder="Search by name or designation..."
+                    class="input-field pl-10 w-full"
+                >
+            </form>
+        </div>
+
+        <!-- Employee Table -->
+        {% if employees %}
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="bg-gray-50 border-b-2 border-gray-200">
+                        <th class="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                        <th class="text-left py-3 px-4 font-semibold text-gray-700">Designation</th>
+                        <th class="text-left py-3 px-4 font-semibold text-gray-700">Join Date</th>
+                        <th class="text-left py-3 px-4 font-semibold text-gray-700">Total Salary</th>
+                        <th class="text-left py-3 px-4 font-semibold text-gray-700">Withdrawn</th>
+                        <th class="text-left py-3 px-4 font-semibold text-gray-700">Remaining</th>
+                        <th class="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td class="py-3 px-4">
+                            <div class="flex items-center">
+                                <div class="bg-gradient-to-r from-orange-500 to-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center mr-3 font-bold">
+                                    {{ emp.name[0].upper() }}
+                                </div>
+                                <span class="font-semibold text-gray-800">{{ emp.name }}</span>
+                            </div>
+                        </td>
+                        <td class="py-3 px-4 text-gray-700">{{ emp.designation }}</td>
+                        <td class="py-3 px-4 text-gray-700">{{ emp.join_date.strftime('%d %b %Y') }}</td>
+                        <td class="py-3 px-4">
+                            <span class="text-green-600 font-bold">Rs {{ "{:,.0f}".format(emp.salary) }}</span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <span class="text-orange-600 font-bold">Rs {{ "{:,.0f}".format(emp.total_withdrawn) }}</span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <span class="text-blue-600 font-bold">Rs {{ "{:,.0f}".format(emp.salary - emp.total_withdrawn) }}</span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <div class="flex space-x-2">
+                                <button
+                                    onclick="openWithdrawalModal({{ emp.id }}, '{{ emp.name }}', {{ emp.salary }}, {{ emp.total_withdrawn }})"
+                                    class="action-btn text-green-600 hover:bg-green-50"
+                                    title="Add Withdrawal"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </button>
+                                <a
+                                    href="{{ url_for('download_employee_history', employee_id=emp.id) }}"
+                                    class="action-btn text-purple-600 hover:bg-purple-50"
+                                    title="Download Salary History PDF"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                </a>
+                                <button
+                                    onclick="openSalaryDateModal({{ emp.id }}, '{{ emp.name }}', '{{ emp.salary_payment_date.strftime('%Y-%m-%d') if emp.salary_payment_date else '' }}')"
+                                    class="action-btn text-indigo-600 hover:bg-indigo-50"
+                                    title="Set Salary Payment Date"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                </button>
+                                <button
+                                    onclick="openEditModal({{ emp.id }})"
+                                    class="action-btn text-blue-600 hover:bg-blue-50"
+                                    title="Edit Employee"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                </button>
+                                <a
+                                    href="{{ url_for('delete_employee', id=emp.id) }}"
+                                    onclick="return confirm('Are you sure you want to delete {{ emp.name }}? This will also delete all their transactions.')"
+                                    class="action-btn text-red-600 hover:bg-red-50"
+                                    title="Delete Employee"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-12">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <p class="text-gray-500 text-lg">No employees found</p>
+            <p class="text-gray-400 text-sm mt-2">Click "Add Employee" to get started</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Employee Modal -->
+<div id="addEmployeeModal" class="modal">
+    <div class="modal-content">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-gray-800">Add New Employee</h3>
+            <button onclick="closeAddModal()" class="text-gray-500 hover:text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <form method="POST" action="{{ url_for('add_employee') }}">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                    <input type="text" name="name" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Designation</label>
+                    <input type="text" name="designation" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Monthly Salary (Rs)</label>
+                    <input type="number" name="salary" step="0.01" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Join Date</label>
+                    <input type="date" name="join_date" required class="input-field">
+                </div>
+                <div class="flex space-x-4">
+                    <button type="submit" class="btn-primary flex-1">Add Employee</button>
+                    <button type="button" onclick="closeAddModal()" class="btn-secondary flex-1">Cancel</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Employee Modal -->
+<div id="editEmployeeModal" class="modal">
+    <div class="modal-content">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-gray-800">Edit Employee</h3>
+            <button onclick="closeEditModal()" class="text-gray-500 hover:text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <form id="editEmployeeForm" method="POST">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+                    <input type="text" name="name" id="edit_name" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Designation</label>
+                    <input type="text" name="designation" id="edit_designation" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Monthly Salary (Rs)</label>
+                    <input type="number" name="salary" id="edit_salary" step="0.01" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Join Date</label>
+                    <input type="date" name="join_date" id="edit_join_date" required class="input-field">
+                </div>
+                <div class="flex space-x-4">
+                    <button type="submit" class="btn-primary flex-1">Update Employee</button>
+                    <button type="button" onclick="closeEditModal()" class="btn-secondary flex-1">Cancel</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Withdrawal Modal -->
+<div id="withdrawalModal" class="modal">
+    <div class="modal-content">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-gray-800">Add Withdrawal</h3>
+            <button onclick="closeWithdrawalModal()" class="text-gray-500 hover:text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="bg-orange-50 p-4 rounded-lg mb-4" id="salaryInfo">
+            <!-- Populated by JavaScript -->
+        </div>
+
+        <form method="POST" action="{{ url_for('add_withdrawal') }}">
+            <input type="hidden" name="employee_id" id="withdrawal_employee_id">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Withdrawal Amount (Rs)</label>
+                    <input type="number" name="amount" id="withdrawal_amount" step="0.01" required class="input-field">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                    <input type="date" name="date" required class="input-field" value="{{ today }}">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                    <textarea name="notes" rows="3" class="input-field"></textarea>
+                </div>
+                <div class="flex space-x-4">
+                    <button type="submit" class="btn-primary flex-1">Record Withdrawal</button>
+                    <button type="button" onclick="closeWithdrawalModal()" class="btn-secondary flex-1">Cancel</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Salary Payment Date Modal -->
+<div id="salaryDateModal" class="modal">
+    <div class="modal-content">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-gray-800">Set Salary Payment Date</h3>
+            <button onclick="closeSalaryDateModal()" class="text-gray-500 hover:text-gray-700">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <p class="text-sm text-gray-600 mb-4" id="salaryDateEmployeeName"></p>
+
+        <div method="POST" id="salaryDateForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Salary Payment Date</label>
+                <input type="date" id="salary_payment_date" class="input-field">
+                <p class="text-xs text-gray-500 mt-1">The date when this employee receives their salary</p>
+            </div>
+
+            <div class="flex space-x-4">
+                <button onclick="submitSalaryDate()" class="btn-primary flex-1">Save Date</button>
+                <button type="button" onclick="closeSalaryDateModal()" class="btn-secondary flex-1">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Get today's date for withdrawal form
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    const dateInputs = document.querySelectorAll('input[type="date"]');
+    dateInputs.forEach(input => {
+        if (!input.value) {
+            input.value = today;
+        }
+    });
+});
+
+let currentSalaryDateEmployeeId = null;
+
+function openSalaryDateModal(employeeId, employeeName, currentDate) {
+    currentSalaryDateEmployeeId = employeeId;
+    document.getElementById('salaryDateEmployeeName').textContent = `Set salary payment date for: ${employeeName}`;
+    document.getElementById('salary_payment_date').value = currentDate || '';
+    document.getElementById('salaryDateModal').classList.add('active');
+}
+
+function closeSalaryDateModal() {
+    document.getElementById('salaryDateModal').classList.remove('active');
+    currentSalaryDateEmployeeId = null;
+}
+
+function submitSalaryDate() {
+    const date = document.getElementById('salary_payment_date').value;
+    if (!date) {
+        alert('Please select a date');
+        return;
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/employee/update-salary-date/${currentSalaryDateEmployeeId}`;
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'hidden';
+    dateInput.name = 'salary_payment_date';
+    dateInput.value = date;
+
+    form.appendChild(dateInput);
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
+
+{% endblock %}
