@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import csv
 from io import StringIO, BytesIO
 import os
@@ -12,6 +12,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+import pytz  # For timezone support
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'rass-cuisine-secret-key-change-this-in-production')
@@ -32,8 +33,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
     'pool_recycle': 300,
-    'pool_size': 10,
-    'max_overflow': 20
 }
 
 db = SQLAlchemy(app)
@@ -74,7 +73,7 @@ class Transaction(db.Model):
     employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     date = db.Column(db.Date, nullable=False)
-    time = db.Column(db.Time, default=lambda: datetime.now().time(), nullable=True)  # Made optional
+    time = db.Column(db.Time, nullable=True)  # Will be set manually with Pakistan time
     notes = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -82,6 +81,30 @@ class Transaction(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+
+# Timezone Helper Function
+def get_pakistan_time():
+    """Get current time in Pakistan timezone (PKT = UTC+5)"""
+    utc_now = datetime.now(pytz.utc)
+    pakistan_tz = pytz.timezone('Asia/Karachi')
+    pakistan_time = utc_now.astimezone(pakistan_tz)
+    return pakistan_time
+
+
+def get_pakistan_datetime():
+    """Get current datetime in Pakistan timezone"""
+    return get_pakistan_time()
+
+
+def get_pakistan_date():
+    """Get current date in Pakistan timezone"""
+    return get_pakistan_time().date()
+
+
+def get_pakistan_time_only():
+    """Get current time only in Pakistan timezone"""
+    return get_pakistan_time().time()
 
 
 # PDF Generation Helper Functions
@@ -119,11 +142,15 @@ def generate_withdrawal_slip_pdf(transaction, employee):
     elements.append(Spacer(1, 0.3 * inch))
 
     # Slip Details
+    # Format time properly
+    time_str = 'N/A'
+    if transaction.time:
+        time_str = transaction.time.strftime('%I:%M %p')
+
     slip_data = [
         ['Slip No:', f"WS-{transaction.id:06d}"],
-        ['Date & Time:',
-         f"{transaction.date.strftime('%d %B %Y')} at {transaction.time.strftime('%I:%M %p') if transaction.time else 'N/A'}"],
-        ['Generated On:', datetime.now().strftime('%d %B %Y, %I:%M %p')],
+        ['Date & Time:', f"{transaction.date.strftime('%d %B %Y')} at {time_str}"],
+        ['Generated On:', get_pakistan_time().strftime('%d %B %Y, %I:%M %p')],
     ]
 
     slip_table = Table(slip_data, colWidths=[2 * inch, 4 * inch])
@@ -577,10 +604,14 @@ def add_withdrawal():
             flash('Withdrawal amount exceeds remaining salary!', 'error')
             return redirect(url_for('employees'))
 
+        # Get Pakistan time
+        pakistan_time = get_pakistan_time()
+
         transaction = Transaction(
             employee_id=employee_id,
             amount=amount,
             date=datetime.strptime(request.form['date'], '%Y-%m-%d').date(),
+            time=pakistan_time.time(),  # Set Pakistan time
             notes=request.form.get('notes', '')
         )
 
@@ -695,7 +726,8 @@ def download_employee_history(employee_id):
 def monthly_reports():
     """Show monthly report selection page"""
     from datetime import timedelta
-    return render_template('monthly_reports.html', now=datetime.now(), timedelta=timedelta)
+    pakistan_now = get_pakistan_datetime()
+    return render_template('monthly_reports.html', now=pakistan_now, timedelta=timedelta)
 
 
 @app.route('/reports/monthly/download')
