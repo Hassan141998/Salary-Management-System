@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Attendance Report - RASS CUISINE{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div>
+            <h2 class="text-3xl font-bold text-gray-800">Monthly Attendance Report</h2>
+            <p class="text-gray-600 mt-1">View attendance records and statistics</p>
+        </div>
+        <div class="flex space-x-3">
+            <a href="{{ url_for('attendance') }}" class="btn-secondary">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                Mark Attendance
+            </a>
+            <a href="{{ url_for('download_attendance_report', month=month, year=year) }}" class="btn-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download CSV
+            </a>
+        </div>
+    </div>
+
+    <!-- Month Selector -->
+    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Month</label>
+                <select id="month_select" class="input-field" onchange="changeMonth()">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m == month %}selected{% endif %}>
+                        {{ ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'][m-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Year</label>
+                <select id="year_select" class="input-field" onchange="changeMonth()">
+                    {% for y in range(year - 2, year + 1) %}
+                    <option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button onclick="changeMonth()" class="btn-secondary w-full">
+                    View Report
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        {% set total_employees = employees|length %}
+        {% set total_present = namespace(value=0) %}
+        {% set total_absent = namespace(value=0) %}
+        {% set total_leave = namespace(value=0) %}
+        {% set total_halfday = namespace(value=0) %}
+
+        {% for emp_id, data in attendance_data.items() %}
+            {% set total_present.value = total_present.value + data.present %}
+            {% set total_absent.value = total_absent.value + data.absent %}
+            {% set total_leave.value = total_leave.value + data.leave %}
+            {% set total_halfday.value = total_halfday.value + data.half_day %}
+        {% endfor %}
+
+        <div class="stat-card border-l-4 border-green-500">
+            <p class="text-gray-600 text-sm font-medium">Total Present</p>
+            <h3 class="text-3xl font-bold text-gray-800 mt-2">{{ total_present.value }}</h3>
+            <p class="text-xs text-gray-500 mt-1">Days marked present</p>
+        </div>
+
+        <div class="stat-card border-l-4 border-red-500">
+            <p class="text-gray-600 text-sm font-medium">Total Absent</p>
+            <h3 class="text-3xl font-bold text-gray-800 mt-2">{{ total_absent.value }}</h3>
+            <p class="text-xs text-gray-500 mt-1">Days marked absent</p>
+        </div>
+
+        <div class="stat-card border-l-4 border-yellow-500">
+            <p class="text-gray-600 text-sm font-medium">Total Leave</p>
+            <h3 class="text-3xl font-bold text-gray-800 mt-2">{{ total_leave.value }}</h3>
+            <p class="text-xs text-gray-500 mt-1">Days on leave</p>
+        </div>
+
+        <div class="stat-card border-l-4 border-blue-500">
+            <p class="text-gray-600 text-sm font-medium">Total Half-Day</p>
+            <h3 class="text-3xl font-bold text-gray-800 mt-2">{{ total_halfday.value }}</h3>
+            <p class="text-xs text-gray-500 mt-1">Half-day records</p>
+        </div>
+    </div>
+
+    <!-- Attendance Table -->
+    <div class="bg-white rounded-xl shadow-md p-6">
+        <h3 class="text-xl font-bold text-gray-800 mb-4">
+            Employee Attendance - {{ ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'][month-1] }} {{ year }}
+        </h3>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-50 border-b-2 border-gray-200">
+                        <th class="text-left py-3 px-2 sticky left-0 bg-gray-50">Employee</th>
+                        <th class="text-center py-3 px-2">Present</th>
+                        <th class="text-center py-3 px-2">Absent</th>
+                        <th class="text-center py-3 px-2">Leave</th>
+                        <th class="text-center py-3 px-2">Half-Day</th>
+                        <th class="text-center py-3 px-2">Total</th>
+                        <th class="text-center py-3 px-2">%</th>
+                        <th class="text-center py-3 px-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    {% set data = attendance_data[emp.id] %}
+                    {% set attendance_pct = (data.present / data.total_marked * 100) if data.total_marked > 0 else 0 %}
+                    <tr class="border-b border-gray-100 hover:bg-gray-50">
+                        <td class="py-3 px-2 sticky left-0 bg-white">
+                            <div class="flex items-center">
+                                <div class="bg-gradient-to-r from-orange-500 to-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center mr-2 text-xs font-bold">
+                                    {{ emp.name[0].upper() }}
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-gray-800">{{ emp.name }}</p>
+                                    <p class="text-xs text-gray-500">{{ emp.designation }}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-center py-3 px-2">
+                            <span class="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                                {{ data.present }}
+                            </span>
+                        </td>
+                        <td class="text-center py-3 px-2">
+                            <span class="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
+                                {{ data.absent }}
+                            </span>
+                        </td>
+                        <td class="text-center py-3 px-2">
+                            <span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-semibold">
+                                {{ data.leave }}
+                            </span>
+                        </td>
+                        <td class="text-center py-3 px-2">
+                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                                {{ data.half_day }}
+                            </span>
+                        </td>
+                        <td class="text-center py-3 px-2 font-semibold">
+                            {{ data.total_marked }}
+                        </td>
+                        <td class="text-center py-3 px-2">
+                            <span class="font-bold {% if attendance_pct >= 90 %}text-green-600{% elif attendance_pct >= 75 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                                {{ "%.1f"|format(attendance_pct) }}%
+                            </span>
+                        </td>
+                        <td class="text-center py-3 px-2">
+                            <button onclick="viewDetails({{ emp.id }}, '{{ emp.name }}')"
+                                    class="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                                View Details
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Calendar View -->
+    <div class="bg-white rounded-xl shadow-md p-6 mt-6">
+        <h3 class="text-xl font-bold text-gray-800 mb-4">Calendar View</h3>
+
+        <div class="grid grid-cols-7 gap-2">
+            <!-- Day headers -->
+            {% for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
+            <div class="text-center font-semibold text-gray-700 py-2 text-sm">
+                {{ day }}
+            </div>
+            {% endfor %}
+
+            <!-- Calendar days -->
+            {% set start_weekday = (date(year, month, 1).weekday() + 1) % 7 %}
+            {% for i in range(start_weekday) %}
+            <div class="border border-gray-100 p-2 bg-gray-50"></div>
+            {% endfor %}
+
+            {% for day in range(1, days_in_month + 1) %}
+            <div class="border border-gray-200 p-2 min-h-20 hover:bg-gray-50 cursor-pointer"
+                 onclick="viewDayDetails('{{ year }}-{{ '%02d'|format(month) }}-{{ '%02d'|format(day) }}')">
+                <div class="text-sm font-semibold text-gray-700 mb-1">{{ day }}</div>
+                <div class="space-y-1">
+                    {% set day_present = namespace(value=0) %}
+                    {% set day_absent = namespace(value=0) %}
+                    {% for emp_id, data in attendance_data.items() %}
+                        {% if day in data.records %}
+                            {% set record = data.records[day] %}
+                            {% if record.status == 'Present' %}
+                                {% set day_present.value = day_present.value + 1 %}
+                            {% elif record.status == 'Absent' %}
+                                {% set day_absent.value = day_absent.value + 1 %}
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if day_present.value > 0 %}
+                    <div class="text-xs text-green-600">✓ {{ day_present.value }}P</div>
+                    {% endif %}
+                    {% if day_absent.value > 0 %}
+                    <div class="text-xs text-red-600">✗ {{ day_absent.value }}A</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="mt-4 flex items-center justify-center space-x-6 text-sm">
+            <div class="flex items-center">
+                <span class="w-4 h-4 bg-green-100 rounded mr-2"></span>
+                <span class="text-gray-600">Present</span>
+            </div>
+            <div class="flex items-center">
+                <span class="w-4 h-4 bg-red-100 rounded mr-2"></span>
+                <span class="text-gray-600">Absent</span>
+            </div>
+            <div class="flex items-center">
+                <span class="w-4 h-4 bg-yellow-100 rounded mr-2"></span>
+                <span class="text-gray-600">Leave</span>
+            </div>
+            <div class="flex items-center">
+                <span class="w-4 h-4 bg-blue-100 rounded mr-2"></span>
+                <span class="text-gray-600">Half-Day</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function changeMonth() {
+    const month = document.getElementById('month_select').value;
+    const year = document.getElementById('year_select').value;
+    window.location.href = `/attendance/report?month=${month}&year=${year}`;
+}
+
+function viewDetails(employeeId, employeeName) {
+    window.location.href = `/attendance/employee/${employeeId}`;
+}
+
+function viewDayDetails(dateStr) {
+    window.location.href = `/attendance?date=${dateStr}`;
+}
+</script>
+{% endblock %}

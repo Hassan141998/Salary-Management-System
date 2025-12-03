@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Mark Attendance - RASS CUISINE{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h2 class="text-3xl font-bold text-gray-800">Employee Attendance</h2>
+            <p class="text-gray-600 mt-1">Mark daily attendance for all employees</p>
+        </div>
+        <a href="{{ url_for('attendance_report') }}" class="btn-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            View Reports
+        </a>
+    </div>
+
+    <!-- Date Selector -->
+    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <div class="flex items-center space-x-4">
+            <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Select Date</label>
+                <input type="date"
+                       id="attendance_date"
+                       value="{{ selected_date.strftime('%Y-%m-%d') }}"
+                       max="{{ today.strftime('%Y-%m-%d') }}"
+                       class="input-field"
+                       onchange="changeDate(this.value)">
+            </div>
+            <div class="flex space-x-2 pt-6">
+                <button onclick="changeDate('{{ (selected_date - timedelta(days=1)).strftime('%Y-%m-%d') }}')"
+                        class="btn-secondary px-4">
+                    ← Previous
+                </button>
+                <button onclick="changeDate('{{ today.strftime('%Y-%m-%d') }}')"
+                        class="btn-secondary px-4">
+                    Today
+                </button>
+                {% if selected_date < today %}
+                <button onclick="changeDate('{{ (selected_date + timedelta(days=1)).strftime('%Y-%m-%d') }}')"
+                        class="btn-secondary px-4">
+                    Next →
+                </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <p class="text-sm text-gray-600 mt-3">
+            <span class="font-semibold">Selected:</span>
+            {{ selected_date.strftime('%A, %d %B %Y') }}
+            {% if selected_date == today %}
+            <span class="ml-2 px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Today</span>
+            {% endif %}
+        </p>
+    </div>
+
+    <!-- Attendance Form -->
+    {% if employees %}
+    <div class="bg-white rounded-xl shadow-md p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-gray-800">Mark Attendance</h3>
+            <div class="flex space-x-2">
+                <button onclick="markAllPresent()" class="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm">
+                    Mark All Present
+                </button>
+                <button onclick="clearAll()" class="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm">
+                    Clear All
+                </button>
+            </div>
+        </div>
+
+        <div method="POST" id="attendanceForm">
+            <input type="hidden" name="date" value="{{ selected_date.strftime('%Y-%m-%d') }}">
+
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-gray-50 border-b-2 border-gray-200">
+                            <th class="text-left py-3 px-4">Employee</th>
+                            <th class="text-left py-3 px-4">Status</th>
+                            <th class="text-left py-3 px-4">Check In</th>
+                            <th class="text-left py-3 px-4">Check Out</th>
+                            <th class="text-left py-3 px-4">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emp in employees %}
+                        {% set record = attendance_records.get(emp.id) %}
+                        <tr class="border-b border-gray-100 hover:bg-gray-50">
+                            <td class="py-3 px-4">
+                                <div class="flex items-center">
+                                    <div class="bg-gradient-to-r from-orange-500 to-red-500 text-white w-10 h-10 rounded-full flex items-center justify-center mr-3 font-bold">
+                                        {{ emp.name[0].upper() }}
+                                    </div>
+                                    <div>
+                                        <p class="font-semibold text-gray-800">{{ emp.name }}</p>
+                                        <p class="text-xs text-gray-500">{{ emp.designation }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3 px-4">
+                                <select name="status_{{ emp.id }}"
+                                        id="status_{{ emp.id }}"
+                                        class="input-field"
+                                        onchange="updateRowColor({{ emp.id }})">
+                                    <option value="">-- Select --</option>
+                                    <option value="Present" {% if record and record.status == 'Present' %}selected{% endif %}>
+                                        ✅ Present
+                                    </option>
+                                    <option value="Absent" {% if record and record.status == 'Absent' %}selected{% endif %}>
+                                        ❌ Absent
+                                    </option>
+                                    <option value="Leave" {% if record and record.status == 'Leave' %}selected{% endif %}>
+                                        🏖️ Leave
+                                    </option>
+                                    <option value="Half-Day" {% if record and record.status == 'Half-Day' %}selected{% endif %}>
+                                        ⏰ Half-Day
+                                    </option>
+                                </select>
+                            </td>
+                            <td class="py-3 px-4">
+                                <input type="time"
+                                       name="check_in_{{ emp.id }}"
+                                       id="check_in_{{ emp.id }}"
+                                       value="{% if record and record.check_in_time %}{{ record.check_in_time.strftime('%H:%M') }}{% endif %}"
+                                       class="input-field text-sm">
+                            </td>
+                            <td class="py-3 px-4">
+                                <input type="time"
+                                       name="check_out_{{ emp.id }}"
+                                       id="check_out_{{ emp.id }}"
+                                       value="{% if record and record.check_out_time %}{{ record.check_out_time.strftime('%H:%M') }}{% endif %}"
+                                       class="input-field text-sm">
+                            </td>
+                            <td class="py-3 px-4">
+                                <input type="text"
+                                       name="notes_{{ emp.id }}"
+                                       value="{% if record %}{{ record.notes }}{% endif %}"
+                                       placeholder="Optional notes"
+                                       class="input-field text-sm">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-6 flex justify-end space-x-4">
+                <button type="button" onclick="submitAttendance()" class="btn-primary px-8">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Save Attendance
+                </button>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-white rounded-xl shadow-md p-12 text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+        <p class="text-gray-500 text-lg">No employees found</p>
+        <p class="text-gray-400 text-sm mt-2">Add employees first to mark attendance</p>
+        <a href="{{ url_for('employees') }}" class="btn-primary mt-4 inline-block">
+            Add Employee
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function changeDate(dateStr) {
+    window.location.href = `/attendance?date=${dateStr}`;
+}
+
+function markAllPresent() {
+    const selects = document.querySelectorAll('select[name^="status_"]');
+    selects.forEach(select => {
+        select.value = 'Present';
+        updateRowColor(select.name.split('_')[1]);
+    });
+}
+
+function clearAll() {
+    if (confirm('Clear all attendance marks for this date?')) {
+        const selects = document.querySelectorAll('select[name^="status_"]');
+        selects.forEach(select => {
+            select.value = '';
+            updateRowColor(select.name.split('_')[1]);
+        });
+
+        // Clear times and notes
+        document.querySelectorAll('input[type="time"]').forEach(input => input.value = '');
+        document.querySelectorAll('input[type="text"]').forEach(input => input.value = '');
+    }
+}
+
+function updateRowColor(empId) {
+    const status = document.getElementById(`status_${empId}`).value;
+    const row = document.getElementById(`status_${empId}`).closest('tr');
+
+    // Remove all status classes
+    row.classList.remove('bg-green-50', 'bg-red-50', 'bg-yellow-50', 'bg-blue-50');
+
+    // Add appropriate class
+    if (status === 'Present') row.classList.add('bg-green-50');
+    else if (status === 'Absent') row.classList.add('bg-red-50');
+    else if (status === 'Leave') row.classList.add('bg-yellow-50');
+    else if (status === 'Half-Day') row.classList.add('bg-blue-50');
+}
+
+function submitAttendance() {
+    const formData = new FormData();
+    const date = document.querySelector('input[name="date"]').value;
+    formData.append('date', date);
+
+    // Get all form inputs
+    document.querySelectorAll('select, input').forEach(input => {
+        if (input.name && input.value) {
+            formData.append(input.name, input.value);
+        }
+    });
+
+    // Create form and submit
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/attendance/mark';
+
+    for (let [key, value] of formData.entries()) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Initialize row colors on page load
+document.addEventListener('DOMContentLoaded', function() {
+    {% for emp in employees %}
+    updateRowColor({{ emp.id }});
+    {% endfor %}
+});
+</script>
+{% endblock %}
