@@ -8,7 +8,7 @@ from io import StringIO, BytesIO
 import os
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
@@ -20,7 +20,6 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'rass-cuisine-secret-key
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
     # Production: Use PostgreSQL (Neon)
-    # Fix for SQLAlchemy 1.4+ compatibility with postgres:// URLs
     if DATABASE_URL.startswith('postgres://'):
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
@@ -58,40 +57,37 @@ class Employee(db.Model):
     designation = db.Column(db.String(100), nullable=False)
     salary = db.Column(db.Float, nullable=False)
     join_date = db.Column(db.Date, nullable=False)
-    salary_payment_date = db.Column(db.Date, nullable=True)  # Made optional
+    salary_payment_date = db.Column(db.Date, nullable=True)
     total_withdrawn = db.Column(db.Float, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
-                           nullable=True)  # Made optional
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
 
+    # CASCADE DELETE - THIS IS THE FIX!
     transactions = db.relationship('Transaction', backref='employee', lazy=True, cascade='all, delete-orphan')
+    attendance_records = db.relationship('Attendance', backref='employee_rel', lazy=True, cascade='all, delete-orphan')
 
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id', ondelete='CASCADE'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     date = db.Column(db.Date, nullable=False)
-    time = db.Column(db.Time, nullable=True)  # Will be set manually with Pakistan time
+    time = db.Column(db.Time, nullable=True)
     notes = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class Attendance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id', ondelete='CASCADE'), nullable=False)
     date = db.Column(db.Date, nullable=False)
-    status = db.Column(db.String(20), nullable=False)  # Present, Absent, Leave, Half-Day
-    check_in_time = db.Column(db.Time)  # Optional check-in time
-    check_out_time = db.Column(db.Time)  # Optional check-out time
+    status = db.Column(db.String(20), nullable=False)
+    check_in_time = db.Column(db.Time)
+    check_out_time = db.Column(db.Time)
     notes = db.Column(db.String(500))
-    marked_by = db.Column(db.String(80))  # Admin who marked
+    marked_by = db.Column(db.String(80))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationship
-    employee = db.relationship('Employee', backref='attendance_records', lazy=True)
-
-    # Unique constraint: one attendance record per employee per day
     __table_args__ = (db.UniqueConstraint('employee_id', 'date', name='unique_employee_date'),)
 
 
@@ -100,8 +96,7 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 
-# Timezone Helper Function (Using Built-in timezone - No pytz needed!)
-# Pakistan Standard Time is UTC+5 (no daylight saving)
+# Timezone Helper Functions (Pakistan Standard Time = UTC+5)
 PKT = timezone(timedelta(hours=5))
 
 
@@ -127,7 +122,10 @@ def get_pakistan_time_only():
     return get_pakistan_time().time()
 
 
-# PDF Generation Helper Functions
+# ============================================
+# PDF GENERATION FUNCTIONS
+# ============================================
+
 def generate_withdrawal_slip_pdf(transaction, employee):
     """Generate a withdrawal slip PDF for a single transaction"""
     buffer = BytesIO()
@@ -135,7 +133,6 @@ def generate_withdrawal_slip_pdf(transaction, employee):
     elements = []
     styles = getSampleStyleSheet()
 
-    # Custom styles
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -153,7 +150,6 @@ def generate_withdrawal_slip_pdf(transaction, employee):
         spaceAfter=12
     )
 
-    # Header
     title = Paragraph("RASS CUISINE RESTAURANT", title_style)
     elements.append(title)
 
@@ -161,8 +157,6 @@ def generate_withdrawal_slip_pdf(transaction, employee):
     elements.append(subtitle)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Slip Details
-    # Format time properly
     time_str = 'N/A'
     if transaction.time:
         time_str = transaction.time.strftime('%I:%M %p')
@@ -185,7 +179,6 @@ def generate_withdrawal_slip_pdf(transaction, employee):
     elements.append(slip_table)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Employee Details
     elements.append(Paragraph("Employee Information", heading_style))
 
     emp_data = [
@@ -209,7 +202,6 @@ def generate_withdrawal_slip_pdf(transaction, employee):
     elements.append(emp_table)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Salary Details
     elements.append(Paragraph("Salary Details", heading_style))
 
     salary_data = [
@@ -239,12 +231,10 @@ def generate_withdrawal_slip_pdf(transaction, employee):
     elements.append(salary_table)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Notes
     if transaction.notes:
         elements.append(Paragraph(f"<b>Notes:</b> {transaction.notes}", styles['Normal']))
         elements.append(Spacer(1, 0.3 * inch))
 
-    # Signature Section
     elements.append(Spacer(1, 0.5 * inch))
 
     sig_data = [
@@ -261,13 +251,11 @@ def generate_withdrawal_slip_pdf(transaction, employee):
     ]))
     elements.append(sig_table)
 
-    # Footer
     elements.append(Spacer(1, 0.5 * inch))
     footer_text = "This is a computer-generated document. No signature required."
     footer = Paragraph(f"<i>{footer_text}</i>", styles['Normal'])
     elements.append(footer)
 
-    # Build PDF
     doc.build(elements)
     buffer.seek(0)
     return buffer
@@ -280,7 +268,6 @@ def generate_employee_history_pdf(employee):
     elements = []
     styles = getSampleStyleSheet()
 
-    # Title
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -297,19 +284,17 @@ def generate_employee_history_pdf(employee):
     elements.append(subtitle)
     elements.append(Spacer(1, 0.2 * inch))
 
-    # Employee Info
     emp_info = f"""
     <b>Employee Name:</b> {employee.name}<br/>
     <b>Designation:</b> {employee.designation}<br/>
     <b>Employee ID:</b> EMP-{employee.id:04d}<br/>
     <b>Join Date:</b> {employee.join_date.strftime('%d %B %Y')}<br/>
     <b>Monthly Salary:</b> Rs {employee.salary:,.2f}<br/>
-    <b>Report Generated:</b> {datetime.now().strftime('%d %B %Y, %I:%M %p')}
+    <b>Report Generated:</b> {get_pakistan_time().strftime('%d %B %Y, %I:%M %p')}
     """
     elements.append(Paragraph(emp_info, styles['Normal']))
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Summary
     summary_data = [
         ['Total Salary', f"Rs {employee.salary:,.2f}"],
         ['Total Withdrawn', f"Rs {employee.total_withdrawn:,.2f}"],
@@ -330,7 +315,6 @@ def generate_employee_history_pdf(employee):
     elements.append(summary_table)
     elements.append(Spacer(1, 0.3 * inch))
 
-    # Transaction History
     if employee.transactions:
         elements.append(Paragraph("<b>Withdrawal History</b>", styles['Heading3']))
         elements.append(Spacer(1, 0.1 * inch))
@@ -367,6 +351,218 @@ def generate_employee_history_pdf(employee):
     return buffer
 
 
+def generate_all_employees_pdf():
+    """Generate comprehensive PDF report for ALL employees with complete information"""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5 * inch, bottomMargin=0.5 * inch)
+    elements = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=22,
+        textColor=colors.HexColor('#f97316'),
+        spaceAfter=20,
+        alignment=TA_CENTER
+    )
+
+    # Main Title
+    title = Paragraph("RASS CUISINE RESTAURANT", title_style)
+    elements.append(title)
+
+    subtitle = Paragraph("Complete Employee Information Report", styles['Heading2'])
+    elements.append(subtitle)
+    elements.append(Spacer(1, 0.1 * inch))
+
+    report_info = f"<b>Report Generated:</b> {get_pakistan_time().strftime('%d %B %Y, %I:%M %p')}"
+    elements.append(Paragraph(report_info, styles['Normal']))
+    elements.append(Spacer(1, 0.3 * inch))
+
+    # Get all employees
+    employees = Employee.query.all()
+
+    # Summary Statistics
+    total_salaries = sum(emp.salary for emp in employees)
+    total_withdrawn = sum(emp.total_withdrawn for emp in employees)
+    total_remaining = total_salaries - total_withdrawn
+
+    summary_data = [
+        ['Metric', 'Value'],
+        ['Total Employees', str(len(employees))],
+        ['Total Monthly Salaries', f"Rs {total_salaries:,.2f}"],
+        ['Total Withdrawn', f"Rs {total_withdrawn:,.2f}"],
+        ['Total Remaining', f"Rs {total_remaining:,.2f}"],
+    ]
+
+    summary_table = Table(summary_data, colWidths=[3 * inch, 2.5 * inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f97316')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#fef3c7'), colors.white]),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.4 * inch))
+
+    # Individual Employee Details
+    for idx, emp in enumerate(employees, 1):
+        # Page break after every 2 employees (except first)
+        if idx > 1 and (idx - 1) % 2 == 0:
+            elements.append(PageBreak())
+
+        # Employee Header
+        emp_header = f"<b>Employee #{idx}: {emp.name}</b>"
+        elements.append(Paragraph(emp_header, styles['Heading3']))
+        elements.append(Spacer(1, 0.1 * inch))
+
+        # Employee Basic Info
+        emp_data = [
+            ['Employee ID', f"EMP-{emp.id:04d}"],
+            ['Name', emp.name],
+            ['Designation', emp.designation],
+            ['Join Date', emp.join_date.strftime('%d %B %Y')],
+            ['Salary Payment Date',
+             emp.salary_payment_date.strftime('%d %B %Y') if emp.salary_payment_date else 'Not Set'],
+        ]
+
+        emp_table = Table(emp_data, colWidths=[2 * inch, 3.5 * inch])
+        emp_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f3f4f6')),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(emp_table)
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Financial Summary
+        fin_data = [
+            ['Monthly Salary', f"Rs {emp.salary:,.2f}"],
+            ['Total Withdrawn', f"Rs {emp.total_withdrawn:,.2f}"],
+            ['Remaining Balance', f"Rs {emp.salary - emp.total_withdrawn:,.2f}"],
+            ['Withdrawal Percentage', f"{(emp.total_withdrawn / emp.salary * 100):.1f}%" if emp.salary > 0 else '0%'],
+        ]
+
+        fin_table = Table(fin_data, colWidths=[2 * inch, 3.5 * inch])
+        fin_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fef3c7')),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(fin_table)
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Recent Transactions (Last 5)
+        recent_trans = sorted(emp.transactions, key=lambda x: x.date, reverse=True)[:5]
+        if recent_trans:
+            elements.append(Paragraph("<b>Recent Withdrawals (Last 5):</b>", styles['Normal']))
+            elements.append(Spacer(1, 0.1 * inch))
+
+            trans_data = [['Date', 'Amount (Rs)', 'Notes']]
+            for trans in recent_trans:
+                trans_data.append([
+                    trans.date.strftime('%d %b %Y'),
+                    f"{trans.amount:,.2f}",
+                    (trans.notes[:25] + '...') if trans.notes and len(trans.notes) > 25 else (trans.notes or '-')
+                ])
+
+            trans_table = Table(trans_data, colWidths=[1.5 * inch, 1.5 * inch, 2.5 * inch])
+            trans_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#60a5fa')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#eff6ff')]),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(trans_table)
+        else:
+            elements.append(Paragraph("<i>No withdrawal history</i>", styles['Normal']))
+
+        # Attendance Summary (Last 30 days)
+        today = get_pakistan_date()
+        start_date = today - timedelta(days=30)
+        attendance_records = Attendance.query.filter(
+            Attendance.employee_id == emp.id,
+            Attendance.date >= start_date,
+            Attendance.date <= today
+        ).all()
+
+        if attendance_records:
+            elements.append(Spacer(1, 0.2 * inch))
+            elements.append(Paragraph("<b>Attendance (Last 30 Days):</b>", styles['Normal']))
+            elements.append(Spacer(1, 0.1 * inch))
+
+            present = sum(1 for r in attendance_records if r.status == 'Present')
+            absent = sum(1 for r in attendance_records if r.status == 'Absent')
+            leave = sum(1 for r in attendance_records if r.status == 'Leave')
+            half_day = sum(1 for r in attendance_records if r.status == 'Half-Day')
+            total = len(attendance_records)
+            percentage = (present / total * 100) if total > 0 else 0
+
+            att_data = [
+                ['Status', 'Days'],
+                ['Present', str(present)],
+                ['Absent', str(absent)],
+                ['Leave', str(leave)],
+                ['Half-Day', str(half_day)],
+                ['Total Marked', str(total)],
+                ['Attendance %', f"{percentage:.1f}%"],
+            ]
+
+            att_table = Table(att_data, colWidths=[2 * inch, 1.5 * inch])
+            att_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10b981')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#d1fae5')]),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(att_table)
+
+        elements.append(Spacer(1, 0.3 * inch))
+
+        # Separator line
+        if idx < len(employees):
+            elements.append(Paragraph("_" * 80, styles['Normal']))
+            elements.append(Spacer(1, 0.2 * inch))
+
+    # Footer
+    elements.append(Spacer(1, 0.3 * inch))
+    footer = Paragraph(
+        "<i>End of Report - RASS CUISINE Restaurant - Confidential</i>",
+        styles['Normal']
+    )
+    elements.append(footer)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
 def generate_monthly_report_pdf(month, year):
     """Generate monthly salary report for all employees"""
     buffer = BytesIO()
@@ -374,7 +570,6 @@ def generate_monthly_report_pdf(month, year):
     elements = []
     styles = getSampleStyleSheet()
 
-    # Title
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -393,8 +588,7 @@ def generate_monthly_report_pdf(month, year):
     elements.append(subtitle)
     elements.append(Spacer(1, 0.2 * inch))
 
-    # Report info
-    report_info = f"<b>Report Generated:</b> {datetime.now().strftime('%d %B %Y, %I:%M %p')}"
+    report_info = f"<b>Report Generated:</b> {get_pakistan_time().strftime('%d %B %Y, %I:%M %p')}"
     elements.append(Paragraph(report_info, styles['Normal']))
     elements.append(Spacer(1, 0.3 * inch))
 
@@ -411,14 +605,12 @@ def generate_monthly_report_pdf(month, year):
     ).order_by(Transaction.date.desc()).all()
 
     if transactions:
-        # Summary
         total_withdrawn = sum(t.amount for t in transactions)
         elements.append(
             Paragraph(f"<b>Total Withdrawals This Month:</b> Rs {total_withdrawn:,.2f}", styles['Heading3']))
         elements.append(Paragraph(f"<b>Total Transactions:</b> {len(transactions)}", styles['Normal']))
         elements.append(Spacer(1, 0.2 * inch))
 
-        # Transaction table
         trans_data = [['Date', 'Employee', 'Designation', 'Amount (Rs)', 'Notes']]
         for trans in transactions:
             trans_data.append([
@@ -452,11 +644,14 @@ def generate_monthly_report_pdf(month, year):
     return buffer
 
 
+# ============================================
+# INITIALIZATION AND ROUTES
+# ============================================
+
 # Initialize database
 def init_db():
     with app.app_context():
         db.create_all()
-        # Create default admin user if not exists
         if not User.query.filter_by(username='admin').first():
             admin = User(username='admin')
             admin.set_password('rass2024')
@@ -516,7 +711,7 @@ def dashboard():
         'total_remaining': sum(emp.salary - emp.total_withdrawn for emp in employees)
     }
 
-    return render_template('dashboard.html', stats=stats, transactions=transactions)
+    return render_template('dashboard.html', stats=stats, transactions=transactions, employees=employees)
 
 
 @app.route('/employees')
@@ -624,14 +819,13 @@ def add_withdrawal():
             flash('Withdrawal amount exceeds remaining salary!', 'error')
             return redirect(url_for('employees'))
 
-        # Get Pakistan time
         pakistan_time = get_pakistan_time()
 
         transaction = Transaction(
             employee_id=employee_id,
             amount=amount,
             date=datetime.strptime(request.form['date'], '%Y-%m-%d').date(),
-            time=pakistan_time.time(),  # Set Pakistan time
+            time=pakistan_time.time(),
             notes=request.form.get('notes', '')
         )
 
@@ -741,6 +935,22 @@ def download_employee_history(employee_id):
     )
 
 
+@app.route('/download-all-employees-pdf')
+@login_required
+def download_all_employees_pdf():
+    """Download complete PDF report for ALL employees with all information"""
+    pdf_buffer = generate_all_employees_pdf()
+
+    filename = f"All_Employees_Complete_Report_{get_pakistan_time().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+    return send_file(
+        pdf_buffer,
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
+
+
 @app.route('/reports/monthly')
 @login_required
 def monthly_reports():
@@ -801,20 +1011,16 @@ def update_salary_date(employee_id):
 @login_required
 def attendance():
     """Show attendance marking page"""
-    # Get today's date in Pakistan timezone
     today = get_pakistan_date()
 
-    # Get selected date from query params (default to today)
     selected_date_str = request.args.get('date', today.strftime('%Y-%m-%d'))
     try:
         selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
     except:
         selected_date = today
 
-    # Get all employees
     employees = Employee.query.order_by(Employee.name).all()
 
-    # Get attendance records for selected date
     attendance_records = {}
     records = Attendance.query.filter_by(date=selected_date).all()
     for record in records:
@@ -825,7 +1031,7 @@ def attendance():
                            selected_date=selected_date,
                            today=today,
                            attendance_records=attendance_records,
-                           timedelta=timedelta)  # Pass timedelta to template
+                           timedelta=timedelta)
 
 
 @app.route('/attendance/mark', methods=['POST'])
@@ -833,20 +1039,17 @@ def attendance():
 def mark_attendance():
     """Mark attendance for employees"""
     try:
-        # Get form data
         date_str = request.form.get('date')
         attendance_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         pakistan_time = get_pakistan_time()
 
-        # Get all employees
         employees = Employee.query.all()
         marked_count = 0
 
         for employee in employees:
             status = request.form.get(f'status_{employee.id}')
 
-            if status:  # If status is selected for this employee
-                # Check if attendance already exists
+            if status:
                 existing = Attendance.query.filter_by(
                     employee_id=employee.id,
                     date=attendance_date
@@ -857,14 +1060,12 @@ def mark_attendance():
                 notes = request.form.get(f'notes_{employee.id}', '')
 
                 if existing:
-                    # Update existing record
                     existing.status = status
                     existing.check_in_time = datetime.strptime(check_in, '%H:%M').time() if check_in else None
                     existing.check_out_time = datetime.strptime(check_out, '%H:%M').time() if check_out else None
                     existing.notes = notes
                     existing.marked_by = current_user.username
                 else:
-                    # Create new record
                     attendance = Attendance(
                         employee_id=employee.id,
                         date=attendance_date,
@@ -892,21 +1093,17 @@ def mark_attendance():
 @login_required
 def attendance_report():
     """Show attendance report page"""
-    # Get month and year from query params (default to current)
     pakistan_now = get_pakistan_datetime()
     month = int(request.args.get('month', pakistan_now.month))
     year = int(request.args.get('year', pakistan_now.year))
 
-    # Get all employees
     employees = Employee.query.order_by(Employee.name).all()
 
-    # Get attendance records for the month
     from calendar import monthrange
     days_in_month = monthrange(year, month)[1]
     start_date = date(year, month, 1)
     end_date = date(year, month, days_in_month)
 
-    # Get all attendance records for the month
     attendance_data = {}
     for employee in employees:
         records = Attendance.query.filter(
@@ -915,13 +1112,11 @@ def attendance_report():
             Attendance.date <= end_date
         ).all()
 
-        # Count statistics
         present_count = sum(1 for r in records if r.status == 'Present')
         absent_count = sum(1 for r in records if r.status == 'Absent')
         leave_count = sum(1 for r in records if r.status == 'Leave')
         half_day_count = sum(1 for r in records if r.status == 'Half-Day')
 
-        # Create daily records dictionary
         daily_records = {r.date.day: r for r in records}
 
         attendance_data[employee.id] = {
@@ -940,7 +1135,7 @@ def attendance_report():
                            year=year,
                            days_in_month=days_in_month,
                            employees=employees,
-                           date=date)  # Pass date class to template
+                           date=date)
 
 
 @app.route('/attendance/employee/<int:employee_id>')
@@ -952,7 +1147,6 @@ def employee_attendance_history(employee_id):
         flash('Employee not found', 'error')
         return redirect(url_for('employees'))
 
-    # Get last 30 days attendance
     today = get_pakistan_date()
     start_date = today - timedelta(days=30)
 
@@ -962,7 +1156,6 @@ def employee_attendance_history(employee_id):
         Attendance.date <= today
     ).order_by(Attendance.date.desc()).all()
 
-    # Calculate statistics
     total_days = len(records)
     present_count = sum(1 for r in records if r.status == 'Present')
     absent_count = sum(1 for r in records if r.status == 'Absent')
@@ -1000,12 +1193,10 @@ def download_attendance_report(month, year):
     output = StringIO()
     writer = csv.writer(output)
 
-    # Header
     writer.writerow([f'RASS CUISINE - Attendance Report - {start_date.strftime("%B %Y")}'])
     writer.writerow([])
     writer.writerow(['Employee', 'Present', 'Absent', 'Leave', 'Half-Day', 'Total Days', 'Attendance %'])
 
-    # Data
     for employee in employees:
         records = Attendance.query.filter(
             Attendance.employee_id == employee.id,
@@ -1043,5 +1234,4 @@ def download_attendance_report(month, year):
 
 if __name__ == '__main__':
     init_db()
-    # For production, use: app.run(host='0.0.0.0', port=5000, debug=False)
     app.run(debug=True)
