@@ -701,7 +701,7 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    employees = Employee.query.all()
+    employees = Employee.query.order_by(Employee.id).all()  # ✅ Sort by ID
     transactions = Transaction.query.order_by(Transaction.created_at.desc()).limit(10).all()
 
     stats = {
@@ -721,9 +721,9 @@ def employees():
     if search:
         employees = Employee.query.filter(
             (Employee.name.contains(search)) | (Employee.designation.contains(search))
-        ).all()
+        ).order_by(Employee.id).all()  # ✅ Sort by ID
     else:
-        employees = Employee.query.all()
+        employees = Employee.query.order_by(Employee.id).all()  # ✅ Sort by ID
 
     return render_template('employees.html', employees=employees, search=search)
 
